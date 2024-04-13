@@ -1,18 +1,24 @@
 "use client";
 import { useEffect, useRef, useState, createContext } from "react";
 import { io as socketIO } from "socket.io-client";
-import Peer from "simple-peer";
-
-const appContext = createContext({});
+import Peer, { Instance } from "simple-peer";
 
 export default function Home() {
   const [localStream, setLocalStream] = useState<MediaStream>();
   const [myid, setId] = useState<string>("");
   const [remoteUser, setRemoteUser] = useState<string>("");
   const [remoteSignal, setRemoteSignal] = useState<any>();
+  const [call, setCall] = useState({
+    isReceivingCall: false,
+    from: "",
+    signal: "",
+    to: "",
+  });
+  const [callAccepted, setCallAccepted] = useState(false);
+  const connectionRef = useRef<any>();
   const socket = useRef<any>();
 
-  const localPeer = useRef<any>();
+  const localPeer = useRef<Instance>();
   useEffect(() => {
     socket.current = socketIO("http://localhost:4000", {
       transports: ["websocket"],
@@ -34,33 +40,8 @@ export default function Home() {
 
     socket.current.on("calling", (data: any) => {
       const { from, signal, to } = data;
+      setCall({ isReceivingCall: true, from, signal, to });
       console.log(`${from} is calling`);
-      const peer = new Peer({ initiator: false, stream: localStream });
-
-      peer.on("signal", (data) => {
-        console.log(`myid: `, myid);
-        socket.current.emit("callAccepted", {
-          id: from,
-          from: to,
-          signal: data,
-        });
-      });
-
-      peer.on("stream", (stream) => {
-        const remoteUserVideo = document.querySelector(
-          "#peer video"
-        ) as HTMLVideoElement;
-        remoteUserVideo.srcObject = stream;
-      });
-
-      peer.signal(signal);
-    });
-
-    socket.current.on("accepted", (data: any) => {
-      const { from, signal } = data;
-      console.log(`${from} has accepted`);
-      setRemoteSignal(signal);
-      localPeer.current.signal(signal);
     });
 
     return () => {
@@ -68,7 +49,38 @@ export default function Home() {
     };
   }, []);
 
-  const call = () => {
+  const answerCall = () => {
+    setCallAccepted(true);
+
+    const peer = new Peer({
+      initiator: false,
+      trickle: false,
+      stream: localStream,
+    });
+
+    peer.on("signal", (myData) => {
+      console.log(`myid: `, myid);
+      socket.current.emit("callAccepted", {
+        id: call.from,
+        from: call.to,
+        signal: myData,
+      });
+    });
+
+    peer.on("stream", (stream) => {
+      console.log("received stream for peer1");
+      const remoteUserVideo = document.querySelector(
+        "#peer video"
+      ) as HTMLVideoElement;
+      remoteUserVideo.srcObject = stream;
+    });
+    console.log(`signal peer1: `, call.signal);
+    peer.signal(call.signal);
+
+    connectionRef.current = peer;
+  };
+
+  const newCall = () => {
     const peer = new Peer({
       initiator: true,
       trickle: false,
@@ -83,7 +95,14 @@ export default function Home() {
       });
     });
 
+    socket.current.on("accepted", (data: any) => {
+      const { from, signal } = data;
+      console.log(`${from} has accepted`);
+      peer.signal(signal);
+    });
+
     peer.on("stream", (stream) => {
+      console.log("received stream for peer2");
       const remoteUserVideo = document.querySelector(
         "#peer video"
       ) as HTMLVideoElement;
@@ -106,7 +125,20 @@ export default function Home() {
           <video autoPlay></video>
         </div>
       </div>
-      <div className="flex w-1/2 justify-center items-center gap-4">
+      {call.isReceivingCall && (
+        <div className="flex justify-center items-center gap-4">
+          <span>{call.from} is calling</span>
+          <button
+            className="border-2 border-blue-400 rounded-md p-4"
+            onClick={(e) => {
+              answerCall();
+            }}
+          >
+            Answer
+          </button>
+        </div>
+      )}
+      <div className="flex w-1/2 justify-center items-center gap-4 my-4">
         <input
           type="text"
           className="border-2 border-blue-400 rounded-md p-4"
@@ -118,7 +150,7 @@ export default function Home() {
         <button
           className="border-2 border-blue-400 rounded-md p-4"
           onClick={(e) => {
-            call();
+            newCall();
           }}
         >
           call
