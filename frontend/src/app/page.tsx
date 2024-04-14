@@ -7,15 +7,15 @@ export default function Home() {
   const [localStream, setLocalStream] = useState<MediaStream>();
   const [myid, setId] = useState<string>("");
   const [remoteUser, setRemoteUser] = useState<string>("");
-  const [remoteSignal, setRemoteSignal] = useState<any>();
   const [call, setCall] = useState({
     isReceivingCall: false,
     from: "",
     signal: "",
     to: "",
   });
+  const [searching, setSearching] = useState<string>("");
   const [callAccepted, setCallAccepted] = useState(false);
-  const connectionRef = useRef<any>();
+  const connectionRef = useRef<Instance>();
   const socket = useRef<any>();
 
   const localPeer = useRef<Instance>();
@@ -31,9 +31,6 @@ export default function Home() {
       ) as HTMLVideoElement;
       localVideo.srcObject = stream;
     });
-
-    socket.current.emit("msg", "hi, mom");
-
     socket.current.on("id", (id: string) => {
       setId(id);
     });
@@ -41,7 +38,10 @@ export default function Home() {
     socket.current.on("calling", (data: any) => {
       const { from, signal, to } = data;
       setCall({ isReceivingCall: true, from, signal, to });
-      console.log(`${from} is calling`);
+    });
+
+    socket.current.on("searching", (msg: string) => {
+      setSearching(msg);
     });
 
     return () => {
@@ -50,6 +50,7 @@ export default function Home() {
   }, []);
 
   const answerCall = () => {
+    setSearching("");
     setCallAccepted(true);
 
     const peer = new Peer({
@@ -80,7 +81,14 @@ export default function Home() {
     connectionRef.current = peer;
   };
 
+  useEffect(() => {
+    if (call.isReceivingCall) {
+      answerCall();
+    }
+  }, [call.isReceivingCall]);
+
   const newCall = () => {
+    setSearching("");
     const peer = new Peer({
       initiator: true,
       trickle: false,
@@ -89,27 +97,39 @@ export default function Home() {
 
     peer.on("signal", (data) => {
       socket.current.emit("callUser", {
-        id: remoteUser,
         from: myid,
         signal: data,
       });
     });
 
     socket.current.on("accepted", (data: any) => {
-      const { from, signal } = data;
+      const { from, signal, id } = data;
       console.log(`${from} has accepted`);
+      setCallAccepted(true);
+      setCall({ isReceivingCall: true, from, to: id, signal });
       peer.signal(signal);
     });
 
     peer.on("stream", (stream) => {
+      setCallAccepted(true);
       console.log("received stream for peer2");
       const remoteUserVideo = document.querySelector(
         "#peer video"
       ) as HTMLVideoElement;
       remoteUserVideo.srcObject = stream;
     });
-
     localPeer.current = peer;
+  };
+
+  const leaveCall = () => {
+    if (localPeer.current) {
+      localPeer.current.destroy();
+    } else {
+      connectionRef.current?.destroy();
+    }
+    socket.current.emit("cutCall", { id: call.to, from: call.from });
+    setCallAccepted(false);
+    setCall({ isReceivingCall: false, from: "", signal: "", to: "" });
   };
 
   return (
@@ -125,19 +145,7 @@ export default function Home() {
           <video autoPlay></video>
         </div>
       </div>
-      {call.isReceivingCall && (
-        <div className="flex justify-center items-center gap-4">
-          <span>{call.from} is calling</span>
-          <button
-            className="border-2 border-blue-400 rounded-md p-4"
-            onClick={(e) => {
-              answerCall();
-            }}
-          >
-            Answer
-          </button>
-        </div>
-      )}
+      {call.isReceivingCall !== false && <span>Connected to {call.from}</span>}
       <div className="flex w-1/2 justify-center items-center gap-4 my-4">
         <input
           type="text"
@@ -155,6 +163,15 @@ export default function Home() {
         >
           call
         </button>
+        <button
+          className="border-2 border-blue-400 rounded-md p-4"
+          onClick={(e) => {
+            leaveCall();
+          }}
+        >
+          Destroy
+        </button>
+        {searching !== "" && <span>{searching}</span>}
       </div>
     </main>
   );
