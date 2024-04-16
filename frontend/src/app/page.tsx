@@ -2,11 +2,15 @@
 import { useEffect, useRef, useState, createContext } from "react";
 import { io as socketIO } from "socket.io-client";
 import Peer, { Instance } from "simple-peer";
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import { MagnifyingGlass } from "react-loader-spinner";
+import { space } from "postcss/lib/list";
 
 export default function Home() {
   const [localStream, setLocalStream] = useState<MediaStream>();
   const [myid, setId] = useState<string>("");
-  const [remoteUser, setRemoteUser] = useState<string>("");
+  const [remoteUserStream, setRemoteUserStream] = useState<MediaStream>();
   const [call, setCall] = useState({
     isReceivingCall: false,
     from: "",
@@ -15,6 +19,8 @@ export default function Home() {
   });
   const [searching, setSearching] = useState<string>("");
   const [callAccepted, setCallAccepted] = useState(false);
+  const [toggleVideo, setToggleVideo] = useState(true);
+  const [toggleAudio, setToggleAudio] = useState(true);
   const connectionRef = useRef<Instance>();
   const socket = useRef<any>();
 
@@ -24,13 +30,13 @@ export default function Home() {
       transports: ["websocket"],
     }).connect();
 
-    navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
-      setLocalStream(stream);
-      const localVideo = document.querySelector(
-        "#user video"
-      ) as HTMLVideoElement;
-      localVideo.srcObject = stream;
-    });
+    navigator.mediaDevices
+      .getUserMedia({ video: true, audio: true })
+      .then((stream) => {
+        setLocalStream(stream);
+        const localVideo = document.querySelector("#user") as HTMLVideoElement;
+        localVideo.srcObject = stream;
+      });
     socket.current.on("id", (id: string) => {
       setId(id);
     });
@@ -42,6 +48,13 @@ export default function Home() {
 
     socket.current.on("searching", (msg: string) => {
       setSearching(msg);
+    });
+
+    socket.current.on("peerout", (data: any) => {
+      const { id } = data;
+      console.log(`${id} out`);
+      setCallAccepted(false);
+      setCall({ isReceivingCall: false, from: "", signal: "", to: "" });
     });
 
     return () => {
@@ -71,11 +84,10 @@ export default function Home() {
     peer.on("stream", (stream) => {
       console.log("received stream for peer1");
       const remoteUserVideo = document.querySelector(
-        "#peer video"
+        "#peer"
       ) as HTMLVideoElement;
       remoteUserVideo.srcObject = stream;
     });
-    console.log(`signal peer1: `, call.signal);
     peer.signal(call.signal);
 
     connectionRef.current = peer;
@@ -88,6 +100,8 @@ export default function Home() {
   }, [call.isReceivingCall]);
 
   const newCall = () => {
+    console.log("initiating call");
+    socket.current.off("cutCall");
     setSearching("");
     const peer = new Peer({
       initiator: true,
@@ -96,6 +110,7 @@ export default function Home() {
     });
 
     peer.on("signal", (data) => {
+      console.log("new call request");
       socket.current.emit("callUser", {
         from: myid,
         signal: data,
@@ -103,8 +118,8 @@ export default function Home() {
     });
 
     socket.current.on("accepted", (data: any) => {
+      console.log("request accepted");
       const { from, signal, id } = data;
-      console.log(`${from} has accepted`);
       setCallAccepted(true);
       setCall({ isReceivingCall: true, from, to: id, signal });
       peer.signal(signal);
@@ -112,9 +127,8 @@ export default function Home() {
 
     peer.on("stream", (stream) => {
       setCallAccepted(true);
-      console.log("received stream for peer2");
       const remoteUserVideo = document.querySelector(
-        "#peer video"
+        "#peer"
       ) as HTMLVideoElement;
       remoteUserVideo.srcObject = stream;
     });
@@ -124,55 +138,99 @@ export default function Home() {
   const leaveCall = () => {
     if (localPeer.current) {
       localPeer.current.destroy();
+      localPeer.current = undefined; // Reset localPeer.current to undefined
+      socket.current.off("callUser");
+      socket.current.off("accepted");
     } else {
       connectionRef.current?.destroy();
+      connectionRef.current = undefined;
+      socket.current.off("calling");
+      socket.current.off("callAccepted"); // Reset connectionRef.current to undefined
     }
+
     socket.current.emit("cutCall", { id: call.to, from: call.from });
     setCallAccepted(false);
     setCall({ isReceivingCall: false, from: "", signal: "", to: "" });
+    localPeer.current = undefined;
+    connectionRef.current = undefined;
+  };
+
+  const controlVideo = () => {
+    if (localStream) {
+      const videoTrack = localStream.getVideoTracks()[0];
+
+      if (videoTrack.enabled) {
+        videoTrack.enabled = false;
+
+        setToggleVideo(false);
+      } else {
+        videoTrack.enabled = true;
+        setToggleVideo(true);
+      }
+    }
+  };
+
+  const controlAudio = () => {
+    if (localStream) {
+      const audioTrack = localStream.getAudioTracks()[0];
+
+      if (audioTrack.enabled) {
+        audioTrack.enabled = false;
+        setToggleAudio(false);
+      } else {
+        audioTrack.enabled = true;
+        setToggleAudio(true);
+      }
+    }
   };
 
   return (
-    <main className="flex flex-col justify-start items-center h-screen w-full">
-      <div>
-        <span>{myid}</span>
-      </div>
-      <div className="w-full flex justify-between items-center p-4">
-        <div id="user">
-          <video autoPlay></video>
+    <main className="flex flex-col justify-start items-center h-screen w-full relative">
+      <Navbar />
+      {searching && <span>{searching}</span>}
+      <div
+        id="peers"
+        className="p-8 h-full w-full flex justify-center items-center gap-8 relative"
+      >
+        <div className="h-full w-1/2 border-2 border-app_purple border-solid rounded-lg relative">
+          <video
+            id="user"
+            autoPlay={true}
+            playsInline={true}
+            muted={true}
+            className="h-auto w-full rounded-md"
+          ></video>
+          <span className="absolute top-4 left-4 px-2 py-1 bg-app_grey rounded-full text-sm text-light">
+            video
+          </span>
         </div>
-        <div id="peer">
-          <video autoPlay></video>
+        <div className="h-full w-1/2 border-2 border-app_purple border-solid rounded-lg relative flex justify-center items-center">
+          {call.isReceivingCall ? (
+            <video id="peer" autoPlay className="h-full w-full"></video>
+          ) : (
+            <MagnifyingGlass
+              color="#8E8D93"
+              visible={true}
+              ariaLabel="Searching"
+              glassColor="#A59BFC"
+              height={80}
+              width={80}
+            />
+          )}
+          <span className="absolute top-4 left-4 px-2 py-1 bg-app_grey rounded-full text-sm text-light">
+            video
+          </span>
         </div>
       </div>
-      {call.isReceivingCall !== false && <span>Connected to {call.from}</span>}
-      <div className="flex w-1/2 justify-center items-center gap-4 my-4">
-        <input
-          type="text"
-          className="border-2 border-blue-400 rounded-md p-4"
-          value={remoteUser}
-          onChange={(e) => {
-            setRemoteUser(e.target.value);
-          }}
-        />
-        <button
-          className="border-2 border-blue-400 rounded-md p-4"
-          onClick={(e) => {
-            newCall();
-          }}
-        >
-          call
-        </button>
-        <button
-          className="border-2 border-blue-400 rounded-md p-4"
-          onClick={(e) => {
-            leaveCall();
-          }}
-        >
-          Destroy
-        </button>
-        {searching !== "" && <span>{searching}</span>}
-      </div>
+      <Footer
+        onCall={callAccepted}
+        newcall={newCall}
+        controlVideo={controlVideo}
+        controlAudio={controlAudio}
+        toggleAudio={toggleAudio}
+        toggleVideo={toggleVideo}
+        leaveCall={leaveCall}
+      />
     </main>
   );
 }

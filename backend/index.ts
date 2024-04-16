@@ -51,6 +51,7 @@ io.on("connection", async (socket) => {
   // if not the it emits the `searching` event to the calling peer with message `Searching for peers`
 
   socket.on("callUser", async ({ signal, from }) => {
+    console.log(`call request from ${from}`);
     const available = await getAvailableUsers(from);
     if (available.length === 0)
       return io.to(from).emit("searching", "Searching for peers");
@@ -66,6 +67,7 @@ io.on("connection", async (socket) => {
 
   socket.on("cutCall", async ({ id, from }) => {
     await users.updateMany({ userid: [id, from] }, { status: "available" });
+    io.to(from).emit("peerout", { id });
   });
 
   socket.on("disconnect", async () => {
