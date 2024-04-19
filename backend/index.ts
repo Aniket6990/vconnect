@@ -3,18 +3,28 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import mongoose from "mongoose";
 import { users } from "./db/Users";
+import dotenv from "dotenv";
+dotenv.config({ path: ".env" });
 const cors = require("cors");
 
 const app = express();
 
-const PORT = 4000;
-const DB_URL = "mongodb://localhost:27017";
+const PORT = process.env.PORT;
+const DB_URL = process.env.DB_URL as string;
 
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
     origin: "http://localhost:3000",
   },
+});
+
+app.get("/", (req, res) => {
+  res.json({ message: "Hello world" });
+});
+
+app.get("/health", (req, res) => {
+  res.status(200).json({ message: "server is fine" });
 });
 
 // utilities funtions for db
@@ -77,7 +87,7 @@ io.on("connection", async (socket) => {
 });
 
 server.listen(PORT, () => {
-  console.log("server is listening on port 4000");
+  console.log(`server is listening on port ${PORT}`);
 });
 
 mongoose
@@ -85,6 +95,6 @@ mongoose
   .then(() => {
     console.log("successfully connected to the db");
   })
-  .catch(() => {
-    console.log("error when connecting to the db");
+  .catch((err) => {
+    console.log("error when connecting to the db", err);
   });
