@@ -25,6 +25,9 @@ const DB_URL = `mongodb+srv://${encodeURIComponent(
 )}@cluster0.aruoh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 const server = createServer(app);
+app.get("/health", (req, res) => {
+  res.status(200).json({ health: "excellent" });
+});
 const io = new Server(server, {
   cors: {
     origin: "http://localhost:3000",
