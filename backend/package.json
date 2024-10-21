@@ -4,7 +4,8 @@
   "description": "signaling server for vconnect peers.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "npx tsc"
   },
   "author": "aniketsingh6990@gmail.com",
   "license": "ISC",

@@ -80,6 +80,8 @@ io.on("connection", async (socket) => {
 
   socket.on("cutCall", async ({ id, from }) => {
     await users.updateMany({ userid: [id, from] }, { status: "available" });
+    io.to(id).emit("callEnded");
+    io.to(from).emit("callEnded");
   });
 
   socket.on("disconnect", async () => {
