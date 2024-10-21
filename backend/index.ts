@@ -3,12 +3,26 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import mongoose from "mongoose";
 import { users } from "./db/Users";
+import { exit } from "process";
+import "dotenv/config";
+
 const cors = require("cors");
 
 const app = express();
+const PORT = process.env.PORT ?? 4000;
+const DB_USER = process.env.DB_USER;
+const DB_PASSWORD = process.env.DB_PASSWORD;
 
-const PORT = 4000;
-const DB_URL = "mongodb://localhost:27017";
+if (!DB_USER || !DB_PASSWORD) {
+  console.log("Db username or password is not provided");
+  exit(1);
+}
+
+const DB_URL = `mongodb+srv://${encodeURIComponent(
+  DB_USER
+)}:${encodeURIComponent(
+  DB_PASSWORD
+)}@cluster0.aruoh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 const server = createServer(app);
 const io = new Server(server, {
@@ -83,6 +97,6 @@ mongoose
   .then(() => {
     console.log("successfully connected to the db");
   })
-  .catch(() => {
-    console.log("error when connecting to the db");
+  .catch((err) => {
+    console.log("error when connecting to the db", err);
   });

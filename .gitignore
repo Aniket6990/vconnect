@@ -10,3 +10,4 @@
 /frontend/.DS_Store
 
 /frontend/next-env.d.ts
+/backend/.env
