@@ -22,14 +22,17 @@ export default function Home() {
   const socketRef = useRef<Socket>();
 
   const connectSocket = useCallback(() => {
-    socketRef.current = socketIO("http://localhost:4000", {
-      transports: ["websocket"],
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      randomizationFactor: 0.5,
-    });
+    socketRef.current = socketIO(
+      process.env.NEXT_PUBLIC_BACKEND_URL as string,
+      {
+        transports: ["websocket"],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        randomizationFactor: 0.5,
+      }
+    );
 
     socketRef.current.on("connect", () => {
       console.log("Connected to server");
