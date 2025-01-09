@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { io as socketIO, Socket } from "socket.io-client";
 import Peer, { Instance } from "simple-peer";
+import { Mic, MicOff, Phone, PhoneOff, Video, VideoOff } from "lucide-react";
 
 export default function Home() {
   const [localStream, setLocalStream] = useState<MediaStream>();
@@ -17,9 +18,19 @@ export default function Home() {
   const [callAccepted, setCallAccepted] = useState(false);
   const [connectionStatus, setConnectionStatus] =
     useState<string>("disconnected");
-  const [callStatus, setCallStatus] = useState<string>(""); // New state for call status
+  const [callStatus, setCallStatus] = useState<string>("Not Connected"); // New state for call status
+
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+
+  const [remoteVideoEnabled, setRemoteVideoEnabled] = useState(true);
+  const [remoteAudioEnabled, setRemoteAudioEnabled] = useState(true);
+
   const connectionRef = useRef<Instance>();
   const socketRef = useRef<Socket>();
+
+  const audioTrackRef = useRef<MediaStreamTrack>();
+  const videoTrackRef = useRef<MediaStreamTrack>();
 
   const connectSocket = useCallback(() => {
     socketRef.current = socketIO(
@@ -68,7 +79,17 @@ export default function Home() {
     });
 
     socketRef.current.on("callEnded", () => {
+      // Remove all listeners before ending the call
+      socketRef.current?.removeAllListeners("accepted");
       endCall();
+      // Reset call state
+      setCall({ isReceivingCall: false, from: "", signal: "", to: "" });
+    });
+
+    socketRef.current.on("mediaStateUpdate", ({ audio, video }) => {
+      console.log(`remote audio: ${audio} :: video: ${video}`);
+      setRemoteVideoEnabled(video);
+      setRemoteAudioEnabled(audio);
     });
 
     // Implement heartbeat
@@ -81,6 +102,7 @@ export default function Home() {
     return () => {
       clearInterval(heartbeat);
       if (socketRef.current) {
+        console.log("socket disconnected");
         socketRef.current.disconnect();
       }
     };
@@ -94,6 +116,10 @@ export default function Home() {
           audio: true,
         });
         setLocalStream(stream);
+
+        audioTrackRef.current = stream.getAudioTracks()[0];
+        videoTrackRef.current = stream.getVideoTracks()[0];
+
         const localVideo = document.querySelector(
           "#user-video"
         ) as HTMLVideoElement;
@@ -114,6 +140,9 @@ export default function Home() {
 
     return () => {
       cleanup();
+      if (localStream) {
+        localStream.getTracks().forEach((track) => track.stop());
+      }
       window.removeEventListener("online", connectSocket);
       window.removeEventListener("offline", () =>
         setConnectionStatus("disconnected")
@@ -144,7 +173,7 @@ export default function Home() {
       setTimeout(() => {
         if (connectionRef.current) {
           connectionRef.current.destroy();
-          newCall();
+          // newCall();
         }
       }, 5000);
     });
@@ -207,7 +236,6 @@ export default function Home() {
 
     peer.on("stream", (stream) => {
       setCallAccepted(true);
-      setCallStatus("Connected"); // Update call status when stream is received
       const remoteUserVideo = document.querySelector(
         "#peer-video"
       ) as HTMLVideoElement;
@@ -220,93 +248,269 @@ export default function Home() {
   const endCall = () => {
     if (connectionRef.current) {
       connectionRef.current.destroy();
+      connectionRef.current = undefined; // Clear the reference
     }
     setCallAccepted(false);
-    setCall({ isReceivingCall: false, from: "", signal: "", to: "" });
-    setCallStatus(""); // Reset call status
+    setCallStatus("Not Connected");
+    setRemoteVideoEnabled(true);
+    setRemoteAudioEnabled(true);
   };
 
   const leaveCall = () => {
     endCall();
     socketRef.current!.emit("cutCall", { id: call.to, from: call.from });
+    setCall({ isReceivingCall: false, from: "", signal: "", to: "" });
   };
 
+  const toggleAudio = useCallback(() => {
+    if (audioTrackRef.current) {
+      audioTrackRef.current.enabled = !audioTrackRef.current.enabled;
+      setIsAudioEnabled(audioTrackRef.current.enabled);
+      // Notify peer about media state change
+      if (callAccepted && socketRef.current) {
+        socketRef.current.emit("mediaStateUpdate", {
+          to: call.from,
+          audio: audioTrackRef.current.enabled,
+          video: videoTrackRef.current?.enabled || false,
+        });
+      }
+    }
+  }, [callAccepted, call]);
+
+  // New function to toggle video
+  const toggleVideo = useCallback(() => {
+    if (videoTrackRef.current) {
+      videoTrackRef.current.enabled = !videoTrackRef.current.enabled;
+      setIsVideoEnabled(videoTrackRef.current.enabled);
+      // Notify peer about media state change
+      if (callAccepted && socketRef.current) {
+        socketRef.current.emit("mediaStateUpdate", {
+          to: call.from,
+          audio: audioTrackRef.current?.enabled || false,
+          video: videoTrackRef.current.enabled,
+        });
+      }
+    }
+  }, [callAccepted, call]);
+
+  useEffect(() => {
+    if (callAccepted) {
+      setCallStatus("Connected");
+    }
+  }, [callAccepted]);
+
   return (
-    <main className="flex flex-col justify-start items-center h-screen w-full bg-gray-100 p-8">
-      <div className="bg-white rounded-lg shadow-md p-4 mb-8 w-full max-w-4xl">
-        <span className="text-lg font-semibold">Your ID: {myid}</span>
-        <span className="ml-4 text-lg">Status: {connectionStatus}</span>
-      </div>
-
-      <div className="w-full max-w-4xl flex justify-between items-stretch gap-4 mb-8">
-        <div className="w-1/2 bg-white rounded-lg shadow-md p-4">
-          <h2 className="text-xl font-semibold mb-2">Your Video</h2>
-          <div className="relative pt-[56.25%]">
-            {" "}
-            {/* 16:9 aspect ratio */}
-            <video
-              id="user-video"
-              autoPlay
-              muted
-              playsInline
-              className="absolute top-0 left-0 w-full h-full object-cover rounded"
-            ></video>
+    <div className="min-h-screen bg-gray-100">
+      {/* Top Navigation Bar */}
+      <nav className="bg-white shadow-md px-6 py-4">
+        <div className="max-w-6xl mx-auto flex justify-between items-center">
+          <div className="flex items-center space-x-4">
+            <h1 className="text-xl font-bold text-gray-800">Video Chat</h1>
+            <span
+              className={`px-3 py-1 rounded-full text-sm ${
+                connectionStatus === "connected"
+                  ? "bg-green-100 text-green-700"
+                  : "bg-red-100 text-red-700"
+              }`}
+            >
+              {connectionStatus}
+            </span>
+          </div>
+          <div className="bg-gray-100 px-4 py-2 rounded-lg">
+            <span className="text-sm text-gray-600">Your ID: </span>
+            <span className="font-mono text-sm">{myid}</span>
           </div>
         </div>
-        <div className="w-1/2 bg-white rounded-lg shadow-md p-4">
-          <h2 className="text-xl font-semibold mb-2">Remote Video</h2>
-          <div className="relative pt-[56.25%]">
-            {" "}
-            {/* 16:9 aspect ratio */}
-            {callAccepted ? (
-              <video
-                id="peer-video"
-                autoPlay
-                playsInline
-                className="absolute top-0 left-0 w-full h-full object-cover rounded"
-              ></video>
-            ) : (
-              <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center bg-gray-200 rounded">
-                <span className="text-lg text-gray-600">
-                  {callStatus || "Not connected to anyone"}
-                </span>
+      </nav>
+
+      {/* Main Content */}
+      <main className="max-w-6xl mx-auto py-8 px-4">
+        {/* Video Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+          {/* Local Video */}
+          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="p-4 border-b">
+              <div className="flex justify-between items-center">
+                <h2 className="text-lg font-semibold text-gray-800">
+                  Your Video
+                </h2>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={toggleAudio}
+                    className={`p-2 rounded-full transition-all ${
+                      isAudioEnabled
+                        ? "bg-blue-100 text-blue-600 hover:bg-blue-200"
+                        : "bg-red-100 text-red-600 hover:bg-red-200"
+                    }`}
+                    title={isAudioEnabled ? "Mute Audio" : "Unmute Audio"}
+                  >
+                    {isAudioEnabled ? <Mic size={20} /> : <MicOff size={20} />}
+                  </button>
+                  <button
+                    onClick={toggleVideo}
+                    className={`p-2 rounded-full transition-all ${
+                      isVideoEnabled
+                        ? "bg-blue-100 text-blue-600 hover:bg-blue-200"
+                        : "bg-red-100 text-red-600 hover:bg-red-200"
+                    }`}
+                    title={isVideoEnabled ? "Turn Off Video" : "Turn On Video"}
+                  >
+                    {isVideoEnabled ? (
+                      <Video size={20} />
+                    ) : (
+                      <VideoOff size={20} />
+                    )}
+                  </button>
+                </div>
               </div>
-            )}
+            </div>
+            <div className="relative bg-gray-900 aspect-video">
+              <video
+                id="user-video"
+                autoPlay
+                muted
+                playsInline
+                className={`w-full h-full object-cover ${
+                  !isVideoEnabled ? "hidden" : ""
+                }`}
+              ></video>
+              {!isVideoEnabled && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
+                  <div className="text-center">
+                    <VideoOff
+                      size={48}
+                      className="text-gray-400 mx-auto mb-2"
+                    />
+                    <span className="text-gray-400">Video Off</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Remote Video */}
+          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="p-4 border-b">
+              <div className="flex justify-between items-center">
+                <h2 className="text-lg font-semibold text-gray-800">
+                  Remote Video
+                </h2>
+                {callAccepted && (
+                  <div className="flex space-x-2">
+                    <div
+                      className={`p-2 rounded-full ${
+                        remoteAudioEnabled
+                          ? "bg-blue-100 text-blue-600"
+                          : "bg-red-100 text-red-600"
+                      }`}
+                    >
+                      {remoteAudioEnabled ? (
+                        <Mic size={20} />
+                      ) : (
+                        <MicOff size={20} />
+                      )}
+                    </div>
+                    <div
+                      className={`p-2 rounded-full ${
+                        remoteVideoEnabled
+                          ? "bg-blue-100 text-blue-600"
+                          : "bg-red-100 text-red-600"
+                      }`}
+                    >
+                      {remoteVideoEnabled ? (
+                        <Video size={20} />
+                      ) : (
+                        <VideoOff size={20} />
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="relative bg-gray-900 aspect-video">
+              {callAccepted ? (
+                <>
+                  <video
+                    id="peer-video"
+                    autoPlay
+                    playsInline
+                    className={`w-full h-full object-cover ${
+                      !remoteVideoEnabled ? "hidden" : ""
+                    }`}
+                  ></video>
+                  {!remoteVideoEnabled && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
+                      <div className="text-center">
+                        <VideoOff
+                          size={48}
+                          className="text-gray-400 mx-auto mb-2"
+                        />
+                        <span className="text-gray-400">Video Off</span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
+                  <div className="text-center">
+                    <Phone size={48} className="text-gray-400 mx-auto mb-2" />
+                    <span className="text-gray-400">
+                      {callStatus || "Not connected"}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="bg-white rounded-lg shadow-md p-4 w-full max-w-4xl">
-        <div className="flex items-center gap-4">
-          <input
-            type="text"
-            className="flex-grow border-2 border-blue-400 rounded-md p-2"
-            value={remoteUser}
-            onChange={(e) => setRemoteUser(e.target.value)}
-            placeholder="Enter remote user ID"
-          />
-          <button
-            className="bg-blue-500 text-white rounded-md px-4 py-2 hover:bg-blue-600 transition-colors"
-            onClick={newCall}
-            disabled={!myid || callAccepted || connectionStatus !== "connected"}
-          >
-            Call
-          </button>
-          <button
-            className="bg-red-500 text-white rounded-md px-4 py-2 hover:bg-red-600 transition-colors"
-            onClick={leaveCall}
-            disabled={!callAccepted}
-          >
-            End Call
-          </button>
+        {/* Call Controls */}
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <div className="flex flex-col md:flex-row gap-4 items-center">
+            <input
+              type="text"
+              value={remoteUser}
+              onChange={(e) => setRemoteUser(e.target.value)}
+              placeholder="Enter remote user ID"
+              className="flex-1 px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
+            />
+            <div className="flex gap-4">
+              <button
+                onClick={newCall}
+                disabled={
+                  !myid || callAccepted || connectionStatus !== "connected"
+                }
+                className={`px-6 py-2 rounded-lg flex items-center gap-2 ${
+                  !myid || callAccepted || connectionStatus !== "connected"
+                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    : "bg-blue-500 text-white hover:bg-blue-600"
+                }`}
+              >
+                <Phone size={20} />
+                <span>Call</span>
+              </button>
+              <button
+                onClick={leaveCall}
+                disabled={!callAccepted}
+                className={`px-6 py-2 rounded-lg flex items-center gap-2 ${
+                  !callAccepted
+                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    : "bg-red-500 text-white hover:bg-red-600"
+                }`}
+              >
+                <PhoneOff size={20} />
+                <span>End</span>
+              </button>
+            </div>
+          </div>
+          {searching && (
+            <div className="mt-4 text-blue-600 text-sm">{searching}</div>
+          )}
+          {callStatus && !searching && (
+            <div className="mt-4 text-green-600 text-sm">{callStatus}</div>
+          )}
         </div>
-        {searching && (
-          <span className="block mt-2 text-blue-600">{searching}</span>
-        )}
-        {callStatus && (
-          <span className="block mt-2 text-green-600">{callStatus}</span>
-        )}
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }

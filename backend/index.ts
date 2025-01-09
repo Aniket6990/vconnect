@@ -25,9 +25,11 @@ const DB_URL = `mongodb+srv://${encodeURIComponent(
 )}@cluster0.aruoh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 const server = createServer(app);
+
 app.get("/health", (req, res) => {
   res.status(200).json({ health: "excellent" });
 });
+
 const io = new Server(server, {
   cors: {
     origin: "http://localhost:3000",
@@ -90,6 +92,9 @@ io.on("connection", async (socket) => {
   socket.on("disconnect", async () => {
     console.log("user disconnected", socket.id);
     await users.deleteOne({ userid: socket.id });
+  });
+  socket.on("mediaStateUpdate", ({ to, audio, video }) => {
+    io.to(to).emit("mediaStateUpdate", { audio, video });
   });
 });
 
