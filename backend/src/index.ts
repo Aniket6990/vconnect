@@ -12,6 +12,7 @@ const app = express();
 const PORT = process.env.PORT ?? 4000;
 const DB_USER = process.env.DB_USER;
 const DB_PASSWORD = process.env.DB_PASSWORD;
+const CLIENT = process.env.CLIENT;
 
 if (!DB_USER || !DB_PASSWORD) {
   console.log("Db username or password is not provided");
@@ -26,13 +27,16 @@ const DB_URL = `mongodb+srv://${encodeURIComponent(
 
 const server = createServer(app);
 
+app.use(cors());
+
 app.get("/health", (req, res) => {
   res.status(200).json({ health: "excellent" });
 });
 
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: CLIENT,
+    methods: ["GET", "POST"],
   },
 });
 
