@@ -305,7 +305,10 @@ export default function Home() {
       <nav className="bg-white shadow-md px-6 py-4">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div className="flex items-center space-x-4">
-            <h1 className="text-xl font-bold text-gray-800">Video Chat</h1>
+            <h1 className="text-xl font-bold text-gray-800">
+              <span className="text-violet-500">V </span>
+              connect
+            </h1>
             <span
               className={`px-3 py-1 rounded-full text-sm ${
                 connectionStatus === "connected"
