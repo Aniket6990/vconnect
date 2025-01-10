@@ -4,9 +4,9 @@
   "description": "signaling server for vconnect peers.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "npx tsc",
-    "start": "node ./build/index.js"
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
   },
   "author": "aniketsingh6990@gmail.com",
   "license": "ISC",
