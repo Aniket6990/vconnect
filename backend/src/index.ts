@@ -56,6 +56,15 @@ const getAvailableUsers = async (id: string) => {
   return availableUsers;
 };
 
+const getAllUsersCount = async () => {
+  const usersCount = await users.find({ status: "available" });
+  return usersCount.length;
+};
+
+app.get("/availableUsers", async (req: any, res: any) => {
+  res.status(200).json({ count: await getAllUsersCount() });
+});
+
 // connection establised with new users
 io.on("connection", async (socket) => {
   console.log("a user connected", socket.id);
@@ -67,6 +76,8 @@ io.on("connection", async (socket) => {
 
   // providing the id to new user on frontend
   socket.emit("id", socket.id);
+
+  socket.broadcast.emit("newUser");
 
   // @onEvent: callUser - it connects the available peer to the other available peers.
   // fetches the list of available users from the database and makes the call request randomly to the available peer
@@ -96,6 +107,7 @@ io.on("connection", async (socket) => {
   socket.on("disconnect", async () => {
     console.log("user disconnected", socket.id);
     await users.deleteOne({ userid: socket.id });
+    socket.broadcast.emit("userLeft");
   });
   socket.on("mediaStateUpdate", ({ to, audio, video }) => {
     io.to(to).emit("mediaStateUpdate", { audio, video });

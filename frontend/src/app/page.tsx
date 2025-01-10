@@ -26,11 +26,24 @@ export default function Home() {
   const [remoteVideoEnabled, setRemoteVideoEnabled] = useState(true);
   const [remoteAudioEnabled, setRemoteAudioEnabled] = useState(true);
 
+  const [totalAvailable, setTotalAvailable] = useState<number>(0);
+
   const connectionRef = useRef<Instance>();
   const socketRef = useRef<Socket>();
 
   const audioTrackRef = useRef<MediaStreamTrack>();
   const videoTrackRef = useRef<MediaStreamTrack>();
+
+  const fetchAvailable = async () => {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_BACKEND_URL}/availableUsers`
+    );
+
+    if (res.status === 200) {
+      const parsedResponse = await res.json();
+      setTotalAvailable(parsedResponse.count);
+    }
+  };
 
   const connectSocket = useCallback(() => {
     socketRef.current = socketIO(
@@ -90,6 +103,14 @@ export default function Home() {
       console.log(`remote audio: ${audio} :: video: ${video}`);
       setRemoteVideoEnabled(video);
       setRemoteAudioEnabled(audio);
+    });
+
+    socketRef.current.on("newUser", () => {
+      fetchAvailable();
+    });
+
+    socketRef.current.on("userLeft", () => {
+      fetchAvailable();
     });
 
     // Implement heartbeat
@@ -260,6 +281,7 @@ export default function Home() {
     endCall();
     socketRef.current!.emit("cutCall", { id: call.to, from: call.from });
     setCall({ isReceivingCall: false, from: "", signal: "", to: "" });
+    fetchAvailable();
   };
 
   const toggleAudio = useCallback(() => {
@@ -296,8 +318,13 @@ export default function Home() {
   useEffect(() => {
     if (callAccepted) {
       setCallStatus("Connected");
+      fetchAvailable();
     }
   }, [callAccepted]);
+
+  useEffect(() => {
+    fetchAvailable();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -319,9 +346,18 @@ export default function Home() {
               {connectionStatus}
             </span>
           </div>
-          <div className="bg-gray-100 px-4 py-2 rounded-lg">
-            <span className="text-sm text-gray-600">Your ID: </span>
-            <span className="font-mono text-sm">{myid}</span>
+          <div className="flex flex-row gap-4">
+            <div className="flex flex-row justify-center items-center">
+              <span
+                className={`px-3 py-1 rounded-full text-sm bg-green-100 text-green-700`}
+              >
+                Online: {totalAvailable}
+              </span>
+            </div>
+            <div className="bg-gray-100 px-4 py-2 rounded-lg">
+              <span className="text-sm text-gray-600">Your ID: </span>
+              <span className="font-mono text-sm">{myid}</span>
+            </div>
           </div>
         </div>
       </nav>
